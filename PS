@@ -1,0 +1,95 @@
+#Starting h2o
+
+    library(h2o)
+    sAddress <- "10.218.2.33" 
+    sPort <- 54321
+    h2o.init(ip = sAddress, port = sPort, startH2O=FALSE)
+
+###########################################################
+#Modelling on the whole train data 
+###########################################################
+
+#Converting the whole train data to h2o dataframe
+
+  train_data_AARP<-as.h2o(xfinal_train_AARP)
+  colnames(train_data_AARP)
+
+#Predictors and Response variable for Multinomial Model
+  
+  predictors <- colnames(train_data_AARP)[which((colnames(test_data_AARP) %in% var_list_grouped_top40))]
+  response<- "status"
+  length(predictors)
+  
+#################################################
+#Random search for selecting hyperparameters
+#################################################
+  
+#Specifying the hyperparameter space
+  
+  ntrees_optns<-seq(90,130,by=5)
+  learn_rate_optns = c(0.4,0.5,0.6,0.7,0.8)
+  max_depth_optns<-c(4,5,6,7,8)
+  
+  hyper_params = list( ntrees = ntrees_optns, 
+                       max_depth = max_depth_optns, 
+                       learn_rate = learn_rate_optns)
+  
+#Specifying the random search for fixed time period
+  
+  search_criteria = list(strategy = "RandomDiscrete", max_runtime_secs = 6000)
+  
+
+#Building models over specified parameters
+  
+  gbm_grid <- h2o.grid (   "gbm", 
+                           grid_id = "fulmode",
+                           training_frame=train_data_AARP,
+                           x = predictors, 
+                           y = response,
+                           distribution="multinomial",
+                           nfolds=2,
+                           search_criteria = search_criteria,
+                           hyper_params = hyper_params,
+                           stopping_metric="misclassification")
+  
+  
+#Selecting the model with lowest MSE
+  
+  gbm_sorted_grid <- h2o.getGrid(grid_id = "fulmode", sort_by = "mse")
+  print(gbm_sorted_grid)
+  
+  best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+  summary(best_model)
+  
+ head(train_data_AARP$status)
+gbm_AARP_multinomial<- h2o.gbm (training_frame=train_data_AARP,
+                                  x=predictors,
+                                  y=response,
+                                  distribution = "multinomial",
+                                  ntrees=110,
+                                  max_depth =4,
+                                  learn_rate=0.8,
+                                  nfolds = 2,
+                                  seed=1234,
+                                  stopping_metric = "misclassification",
+                                  model_id = "gbm_AARP_multi")
+  
+  View(summary(gbm_AARP_multinomial))
+
+
+#Predicting on test data
+  
+  
+  pred_multi_AARP.gbm <- h2o.predict( gbm_AARP_multinomial,test_data_AARP,type='response')
+  #View(summary(pred_multi_AARP.gbm))
+  
+  predicted_all<-as.data.frame(pred_multi_AARP.gbm)  
+  
+  head(predicted_all)
+
+
+
+mean(predicted_all$p0)
+mean(predicted_all$p1)
+mean(predicted_all$p2)
+    
